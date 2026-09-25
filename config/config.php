@@ -9,6 +9,16 @@ error_reporting(E_ALL);
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 
+// Header keamanan dasar untuk setiap response (Fase 7 hardening).
+// Tidak menambahkan CSP di sini karena banyak halaman memakai <script>
+// inline -- CSP yang ketat akan mematahkan itu tanpa audit nonce/hash
+// penuh, yang di luar cakupan perbaikan minimal Fase 7 ini.
+if (!headers_sent()) {
+    header('X-Content-Type-Options: nosniff');
+    header('X-Frame-Options: SAMEORIGIN');
+    header('Referrer-Policy: strict-origin-when-cross-origin');
+}
+
 define('APP_NAME', 'Fokusin');
 define('APP_TAGLINE', 'Fokus belajar. Atur tugas. Raih tujuan.');
 define('BASE_URL', '/fokusin'); // sesuaikan jika folder project berbeda

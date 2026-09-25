@@ -1,0 +1,27 @@
+# Direktori ini hanya untuk menyimpan file yang diupload pengguna
+# (PDF/DOC/gambar, dst). Konfigurasi di bawah mencegah file apa pun di
+# sini dieksekusi sebagai skrip, meskipun validasi ekstensi/MIME saat
+# upload seharusnya sudah menolak file berbahaya sejak awal — ini
+# lapisan pertahanan kedua (defense in depth).
+
+# Nonaktifkan eksekusi PHP di direktori ini (Apache dengan mod_php/php-fpm handler klasik).
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+
+# Tolak akses ke file apa pun yang berekstensi skrip, apa pun handler-nya.
+<FilesMatch "\.(php|php\d|phtml|pht|phar|cgi|pl|py|asp|aspx|sh|exe)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Jangan izinkan CGI/script handler apa pun dan matikan directory listing.
+Options -ExecCGI -Indexes

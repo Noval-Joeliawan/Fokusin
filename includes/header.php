@@ -6,6 +6,8 @@
 $user = currentUser();
 $theme = $user['theme'] ?? 'light';
 $flash = getFlash();
+$levelUp = $_SESSION['level_up'] ?? null;
+unset($_SESSION['level_up']);
 ?>
 <!DOCTYPE html>
 <html lang="id" data-theme="<?= e($theme) ?>">
@@ -35,4 +37,7 @@ $flash = getFlash();
             <div class="alert alert-<?= e($flash['type']) ?>" role="status">
                 <?= e($flash['message']) ?>
             </div>
+        <?php endif; ?>
+        <?php if ($levelUp): ?>
+            <div class="alert alert-success" role="status">🎉 Selamat! Kamu naik dari Level <?= (int) $levelUp['from'] ?> ke Level <?= (int) $levelUp['to'] ?>.</div>
         <?php endif; ?>

@@ -52,9 +52,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'study_minutes' => $studyMinutes,
             'label' => $label !== '' ? mb_substr($label, 0, 150) : 'Sesi Fokus',
             'task_id' => $validTaskId,
+            'paused_at' => null,
+            'total_paused_seconds' => 0,
         ];
 
         header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => true]);
+        exit;
+    }
+
+    /* Waktu yang dihabiskan dalam kondisi PAUSE tidak boleh terhitung
+       sebagai waktu fokus aktif. Klien memberi tahu server kapan pause
+       dan resume terjadi (bukan cuma UI lokal) supaya durasi akhir yang
+       dihitung server benar-benar mencerminkan waktu aktif, bukan waktu
+       sejak sesi dimulai. */
+    if ($action === 'pause_session') {
+        header('Content-Type: application/json; charset=utf-8');
+        if (empty($_SESSION['fokusin_focus_session'])) {
+            http_response_code(404);
+            echo json_encode(['success' => false]);
+            exit;
+        }
+        // Idempotent: jika sudah dalam kondisi pause, permintaan pause lagi diabaikan.
+        if (empty($_SESSION['fokusin_focus_session']['paused_at'])) {
+            $_SESSION['fokusin_focus_session']['paused_at'] = time();
+        }
+        echo json_encode(['success' => true]);
+        exit;
+    }
+
+    if ($action === 'resume_session') {
+        header('Content-Type: application/json; charset=utf-8');
+        if (empty($_SESSION['fokusin_focus_session'])) {
+            http_response_code(404);
+            echo json_encode(['success' => false]);
+            exit;
+        }
+        // Idempotent: jika tidak sedang pause, permintaan resume diabaikan.
+        if (!empty($_SESSION['fokusin_focus_session']['paused_at'])) {
+            $pausedFor = max(0, time() - (int) $_SESSION['fokusin_focus_session']['paused_at']);
+            $_SESSION['fokusin_focus_session']['total_paused_seconds'] =
+                (int) ($_SESSION['fokusin_focus_session']['total_paused_seconds'] ?? 0) + $pausedFor;
+            $_SESSION['fokusin_focus_session']['paused_at'] = null;
+        }
         echo json_encode(['success' => true]);
         exit;
     }
@@ -69,6 +109,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $elapsedSeconds = max(0, time() - (int) $serverSession['started_at']);
+
+        // Waktu pause tidak dihitung sebagai waktu fokus aktif. Jika sesi
+        // masih dalam kondisi pause saat "Selesai" ditekan (tanpa resume
+        // dulu), hitung juga sisa waktu pause yang sedang berjalan.
+        $totalPausedSeconds = (int) ($serverSession['total_paused_seconds'] ?? 0);
+        if (!empty($serverSession['paused_at'])) {
+            $totalPausedSeconds += max(0, time() - (int) $serverSession['paused_at']);
+        }
+        $elapsedSeconds = max(0, $elapsedSeconds - $totalPausedSeconds);
+
         $plannedMinutes = max(1, min(180, (int) $serverSession['study_minutes']));
         $plannedSeconds = $plannedMinutes * 60;
 
@@ -173,7 +223,10 @@ include __DIR__ . '/includes/header.php';
 
         <?php if (!empty($externalMusic) || !empty($licensedMusic)): ?>
         <div class="panel">
-            <div class="panel__head"><h2>🎵 Musik Fokus</h2></div>
+            <div class="panel__head">
+                <h2>🎵 Musik Fokus</h2>
+                <a href="<?= BASE_URL ?>/focus_music.php" class="panel__link">⚙️ Kelola Musik</a>
+            </div>
 
             <?php if (!empty($licensedMusic)): ?>
                 <p class="focus-music__hint">Audio bawaan (royalti bebas):</p>
@@ -420,16 +473,35 @@ include __DIR__ . '/includes/header.php';
 
     document.getElementById('btnStartFocus').addEventListener('click', startTimer);
 
+    /* Beri tahu server kapan pause/resume terjadi supaya waktu pause bisa
+       dikeluarkan dari perhitungan durasi aktif saat sesi disimpan. Dikirim
+       di background (tidak menghambat UI) -- jika request ini gagal karena
+       jaringan, kasus terburuknya waktu pause tetap terhitung seperti
+       sebelumnya (tidak lebih buruk dari sebelum perbaikan ini). */
+    function postFocusAction(action) {
+        var formData = new URLSearchParams();
+        formData.append('csrf_token', <?= json_encode($csrfToken) ?>);
+        formData.append('action', action);
+        fetch('<?= BASE_URL ?>/focus.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+            body: formData.toString(),
+            credentials: 'same-origin'
+        }).catch(function () {});
+    }
+
     document.getElementById('btnPauseResume').addEventListener('click', function () {
         if (!paused) {
             clearInterval(intervalId);
             paused = true;
             this.textContent = 'Resume';
+            postFocusAction('pause_session');
         } else {
             endTimestamp = Date.now() + remainingSeconds * 1000;
             intervalId = setInterval(tick, 500);
             paused = false;
             this.textContent = 'Pause';
+            postFocusAction('resume_session');
         }
     });
 

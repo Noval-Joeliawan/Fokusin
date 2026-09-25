@@ -89,6 +89,29 @@ $stmt = $pdo->prepare(
 $stmt->execute([$user['id']]);
 $nextPlan = $stmt->fetch();
 
+// --- Fase 3: Catatan terbaru ---
+$stmt = $pdo->prepare('SELECT id, title FROM notes WHERE user_id = ? ORDER BY updated_at DESC LIMIT 3');
+$stmt->execute([$user['id']]);
+$recentNotes = $stmt->fetchAll();
+
+// --- Fase 3: Materi dipelajari ---
+$stmt = $pdo->prepare('SELECT COUNT(*) FROM material_completions WHERE user_id = ?');
+$stmt->execute([$user['id']]);
+$materialsCompletedCount = (int) $stmt->fetchColumn();
+
+$stmt = $pdo->query('SELECT COUNT(*) FROM materials');
+$materialsTotalCount = (int) $stmt->fetchColumn();
+
+// --- Fase 3: Kuis terakhir ---
+$stmt = $pdo->prepare(
+    'SELECT qa.score, q.title FROM quiz_attempts qa
+     JOIN quizzes q ON q.id = qa.quiz_id
+     WHERE qa.user_id = ?
+     ORDER BY qa.finished_at DESC LIMIT 1'
+);
+$stmt->execute([$user['id']]);
+$lastQuizAttempt = $stmt->fetch();
+
 $pageTitle = 'Beranda';
 $activeNav = 'beranda';
 include __DIR__ . '/includes/header.php';
@@ -180,6 +203,54 @@ include __DIR__ . '/includes/header.php';
                 <span class="schedule-card__time"><?= e(substr($nextPlan['start_time'], 0, 5)) ?></span>
                 <span class="schedule-card__subject"><?= e($nextPlan['subject_name'] ?? 'Sesi belajar') ?></span>
             </div>
+        <?php endif; ?>
+    </div>
+</section>
+
+<section class="dash-grid dash-grid--three">
+    <div class="panel">
+        <div class="panel__head">
+            <h2>Catatan Terbaru</h2>
+            <a href="<?= BASE_URL ?>/notes.php" class="panel__link">Lihat Semua</a>
+        </div>
+        <?php if (empty($recentNotes)): ?>
+            <div class="empty-state empty-state--compact">
+                <p class="empty-state__sub">Belum ada catatan.</p>
+            </div>
+        <?php else: ?>
+            <ul class="mini-list">
+                <?php foreach ($recentNotes as $note): ?>
+                    <li><a href="<?= BASE_URL ?>/notes.php"><?= e($note['title']) ?></a></li>
+                <?php endforeach; ?>
+            </ul>
+        <?php endif; ?>
+    </div>
+
+    <div class="panel">
+        <div class="panel__head">
+            <h2>Materi Dipelajari</h2>
+            <a href="<?= BASE_URL ?>/materials.php" class="panel__link">Lanjut Belajar</a>
+        </div>
+        <p class="mini-stat"><?= $materialsCompletedCount ?> / <?= $materialsTotalCount ?> materi</p>
+        <?php if ($materialsTotalCount > 0): ?>
+            <div class="progress-bar progress-bar--sm">
+                <div class="progress-bar__fill" style="width: <?= min(100, (int) round($materialsCompletedCount / $materialsTotalCount * 100)) ?>%"></div>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <div class="panel">
+        <div class="panel__head">
+            <h2>Kuis Terakhir</h2>
+            <a href="<?= BASE_URL ?>/quiz.php?action=history" class="panel__link">Lihat Riwayat</a>
+        </div>
+        <?php if (!$lastQuizAttempt): ?>
+            <div class="empty-state empty-state--compact">
+                <p class="empty-state__sub">Belum ada kuis yang dikerjakan.</p>
+            </div>
+        <?php else: ?>
+            <p class="mini-list__title"><?= e($lastQuizAttempt['title']) ?></p>
+            <p class="mini-stat">Skor <?= e(rtrim(rtrim((string) $lastQuizAttempt['score'], '0'), '.')) ?: '0' ?></p>
         <?php endif; ?>
     </div>
 </section>
